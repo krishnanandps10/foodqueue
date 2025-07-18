@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Order Your Meal</title>
+  <style>
+    body { font-family: Arial; padding: 20px; }
+    input, select { margin: 8px 0; padding: 8px; width: 100%; }
+    button { padding: 10px 20px; }
+    #status { margin-top: 15px; font-weight: bold; }
+    #stock { margin-top: 20px; background: #f2f2f2; padding: 10px; }
+  </style>
+</head>
+<body>
+  <h2>🥗 Meal Order Form</h2>
+
+  <form id="orderForm">
+    <input type="text" id="student_name" placeholder="Your Name" required><br>
+    <input type="text" id="roll_number" placeholder="Roll Number" required><br>
+
+    <select id="item">
+      <option value="Meal">Meal - ₹40</option>
+      <option value="Chai">Chai - ₹10</option>
+      <option value="Snack">Snack - ₹20</option>
+    </select><br>
+
+    <input type="number" id="quantity" placeholder="Quantity" min="1" required><br>
+
+    <button type="submit">Place Order</button>
+  </form>
+
+  <p id="status"></p>
+
+  <div id="stock">
+    📦 <b>Available Stock:</b><br>
+    🥗 Meal: <span id="mealStock">--</span><br>
+    🍵 Chai: <span id="chaiStock">--</span><br>
+    🍪 Snack: <span id="snackStock">--</span>
+  </div>
+
+  <script>
+    async function fetchStock() {
+      try {
+        const res = await fetch("/get-stock");
+        const data = await res.json();
+        document.getElementById("mealStock").innerText = data.Meal ?? "--";
+        document.getElementById("chaiStock").innerText = data.Chai ?? "--";
+        document.getElementById("snackStock").innerText = data.Snack ?? "--";
+      } catch (err) {
+        console.error("Stock fetch error:", err);
+      }
+    }
+
+    const form = document.getElementById("orderForm");
+    form.addEventListener("submit", async function (e) {
+      e.preventDefault();
+
+      const order = {
+        student_name: document.getElementById("student_name").value,
+        roll_number: document.getElementById("roll_number").value,
+        item: document.getElementById("item").value,
+        quantity: parseInt(document.getElementById("quantity").value)
+      };
+
+      try {
+        const res = await fetch("/place-order", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(order)
+        });
+
+        const data = await res.json();
+        if (res.ok) {
+          // Fetch ETA
+          const waitRes = await fetch(`/get-estimated-wait/${order.roll_number}`);
+          const waitData = await waitRes.json();
+
+          document.getElementById("status").innerText =
+            `✅ Order placed! ⏱ Estimated wait: ${waitData.wait_minutes} mins`;
+
+          fetchStock(); // refresh stock
+        } else {
+          document.getElementById("status").innerText = `❌ ${data.detail}`;
+        }
+      } catch (err) {
+        console.error("Order error:", err);
+        document.getElementById("status").innerText = "❌ Order failed";
+      }
+    });
+
+    fetchStock();
+    setInterval(fetchStock, 5000); // refresh every 5 sec
+  </script>
+</body>
+</html>

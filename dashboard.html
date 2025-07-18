@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Order Dashboard</title>
+  <style>
+    body { font-family: Arial, sans-serif; padding: 20px; }
+    table { border-collapse: collapse; width: 100%; margin-top: 20px; }
+    th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
+    th { background-color: #f2f2f2; }
+    #summary, #downloadBtn { margin-bottom: 15px; font-weight: bold; }
+    button { padding: 6px 10px; font-size: 14px; cursor: pointer; }
+  </style>
+</head>
+<body>
+  <h2>🧾 Chandrettan's Order Dashboard</h2>
+
+  <h3>📦 Update Stock</h3>
+  <form id="stockForm" style="margin-bottom: 20px;">
+    <label>🥗 Meal: <input type="number" id="stockMeal" min="0" required></label><br>
+    <label>🍵 Chai: <input type="number" id="stockChai" min="0" required></label><br>
+    <label>🍪 Snack: <input type="number" id="stockSnack" min="0" required></label><br>
+    <button type="submit">💾 Update Stock</button>
+    <span id="stockMsg" style="margin-left: 15px; font-weight: bold;"></span>
+  </form>
+
+  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+    <div id="summary" style="font-weight: bold;">Loading summary...</div>
+    <div>
+      <label for="filter">🧮 Show:</label>
+      <select id="filter" onchange="fetchOrders()">
+        <option value="all">All</option>
+        <option value="paid">Only Paid</option>
+        <option value="unpaid">Only Unpaid</option>
+      </select>
+    </div>
+  </div>
+
+  <button id="downloadBtn" onclick="downloadCSV()">⬇️ Download Orders as CSV</button>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Student Name</th>
+        <th>Roll Number</th>
+        <th>Item</th>
+        <th>Quantity</th>
+        <th>Timestamp</th>
+        <th>Paid</th>
+      </tr>
+    </thead>
+    <tbody id="ordersTable"></tbody>
+  </table>
+
+  <script>
+    let lastFetchedOrders = [];
+
+    async function fetchOrders() {
+      try {
+        const res = await fetch("/get-orders");
+        const data = await res.json();
+        lastFetchedOrders = data;
+
+        const table = document.getElementById("ordersTable");
+        const summary = document.getElementById("summary");
+        const filter = document.getElementById("filter").value;
+        table.innerHTML = "";
+
+        let mealCount = 0, chaiCount = 0, snackCount = 0;
+
+        data.forEach((order, index) => {
+          if (
+            (filter === "paid" && !order.paid) ||
+            (filter === "unpaid" && order.paid)
+          ) return;
+
+          const row = document.createElement("tr");
+          row.innerHTML = `
+            <td>${order.student_name}</td>
+            <td>${order.roll_number}</td>
+            <td>${order.item}</td>
+            <td>${order.quantity}</td>
+            <td>${new Date(order.timestamp).toLocaleString()}</td>
+            <td>
+              ${order.paid
+                ? "✅ Paid"
+                : `<button onclick="markAsPaid(${index})">Mark Paid</button>`}
+            </td>
+          `;
+          table.appendChild(row);
+
+          if (order.item === "Meal") mealCount += order.quantity;
+          else if (order.item === "Chai") chaiCount += order.quantity;
+          else if (order.item === "Snack") snackCount += order.quantity;
+        });
+
+        summary.innerText = `🧮 Summary → Meals: ${mealCount} | Chai: ${chaiCount} | Snacks: ${snackCount}`;
+      } catch (error) {
+        console.error("Error fetching orders:", error);
+      }
+    }
+
+    async function fetchStockIntoForm() {
+      try {
+        const res = await fetch("/get-stock");
+        const stock = await res.json();
+        document.getElementById("stockMeal").value = stock.Meal ?? 0;
+        document.getElementById("stockChai").value = stock.Chai ?? 0;
+        document.getElementById("stockSnack").value = stock.Snack ?? 0;
+      } catch (err) {
+        console.error("Failed to load stock into form:", err);
+      }
+    }
+
+    async function markAsPaid(index) {
+      try {
+        const res = await fetch(`/mark-paid/${index}`, { method: "POST" });
+        if (res.ok) fetchOrders();
+        else alert("❌ Failed to mark as paid");
+      } catch (err) {
+        console.error("Error marking paid:", err);
+      }
+    }
+
+    const stockForm = document.getElementById("stockForm");
+    stockForm.addEventListener("submit", async function (e) {
+      e.preventDefault();
+      const stock = {
+        Meal: parseInt(document.getElementById("stockMeal").value),
+        Chai: parseInt(document.getElementById("stockChai").value),
+        Snack: parseInt(document.getElementById("stockSnack").value),
+      };
+
+      try {
+        const res = await fetch("/set-stock", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(stock)
+        });
+        const data = await res.json();
+        if (res.ok) {
+          document.getElementById("stockMsg").innerText = "✅ Stock updated!";
+          fetchOrders();
+        } else {
+          document.getElementById("stockMsg").innerText = "❌ Failed to update stock";
+        }
+      } catch (err) {
+        console.error("Stock update error:", err);
+        document.getElementById("stockMsg").innerText = "❌ Server error";
+      }
+    });
+
+    function downloadCSV() {
+      if (lastFetchedOrders.length === 0) {
+        alert("No orders to download.");
+        return;
+      }
+
+      let csv = "Student Name,Roll Number,Item,Quantity,Timestamp,Paid\n";
+      lastFetchedOrders.forEach(order => {
+        csv += `"${order.student_name}","${order.roll_number}","${order.item}",${order.quantity},"${new Date(order.timestamp).toLocaleString()}",${order.paid ? "Yes" : "No"}\n`;
+      });
+
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(blob);
+      link.download = `orders_${new Date().toISOString().slice(0, 10)}.csv`;
+      link.click();
+    }
+
+    fetchOrders();
+    fetchStockIntoForm();
+    setInterval(fetchOrders, 5000);
+  </script>
+</body>
+</html>
